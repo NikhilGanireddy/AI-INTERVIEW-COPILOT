@@ -4,6 +4,7 @@ import { Schema, model, models } from "mongoose";
 const VoiceProfileSchema = new Schema(
     {
         userId: { type: String, index: true, required: true },
+        userName: { type: String, required: true },
         elevenVoiceId: { type: String, required: true },
         name: { type: String, default: "My Voice" },
     },
