@@ -16,11 +16,11 @@ Interview Trainer bundles live transcription, Grok-powered coaching, and custom 
 
 ## Architecture at a Glance
 ```
-┌─────────────────────────────── Frontend ───────────────────────────────┐
-│ Next.js 15 App Router                                               │
-│ • UI + client hooks (React 19, Tailwind, Radix)                      │
-│ • Clerk components for auth gating                                   │
-│ • Streaming/audio capture logic (MediaRecorder + Web Audio)          │
+┌─────────────────────────────── Frontend ──────────────────────────────┐
+│ Next.js 15 App Router                                                 │
+│ • UI + client hooks (React 19, Tailwind, Radix)                       │
+│ • Clerk components for auth gating                                    │
+│ • Streaming/audio capture logic (MediaRecorder + Web Audio)           │
 └───────────────────────────────▲───────────────────────────────────────┘
                                 │ fetch / stream
 ┌───────────────────────────────┴───────────────────────────────────────┐
