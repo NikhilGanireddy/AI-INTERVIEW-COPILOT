@@ -37,17 +37,33 @@ function ClickSpark({
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    const parent = canvas.parentElement;
-    if (!parent) return;
+
+    const getParent = (): HTMLElement | null => canvas.parentElement as HTMLElement | null;
 
     function resizeCanvas() {
+      const parent = getParent();
+      if (!parent) return;
       const { width, height } = parent.getBoundingClientRect();
-      if (canvas.width !== width) canvas.width = width;
-      if (canvas.height !== height) canvas.height = height;
+
+      const dpr = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
+      const targetW = Math.floor(width * dpr);
+      const targetH = Math.floor(height * dpr);
+
+      if (canvas) {
+        if (canvas.width !== targetW) canvas.width = targetW;
+        if (canvas.height !== targetH) canvas.height = targetH;
+
+        // Keep CSS size in CSS pixels
+        canvas.style.width = `${Math.floor(width)}px`;
+        canvas.style.height = `${Math.floor(height)}px`;
+      }
     }
 
+    const parentForObserver = getParent();
+    if (!parentForObserver) return;
+
     const observer = new ResizeObserver(resizeCanvas);
-    observer.observe(parent);
+    observer.observe(parentForObserver);
     resizeCanvas();
 
     return () => {
@@ -82,9 +98,7 @@ function ClickSpark({
 
       sparksRef.current = sparksRef.current.filter((spark) => {
         const elapsed = timestamp - spark.startTime;
-        if (elapsed >= duration) {
-          return false;
-        }
+        if (elapsed >= duration) return false;
 
         const progress = elapsed / duration;
         const eased = easeFunc(progress);
@@ -112,9 +126,7 @@ function ClickSpark({
     animationFrameRef.current = requestAnimationFrame(draw);
 
     return () => {
-      if (animationFrameRef.current != null) {
-        cancelAnimationFrame(animationFrameRef.current);
-      }
+      if (animationFrameRef.current != null) cancelAnimationFrame(animationFrameRef.current);
     };
   }, [duration, easeFunc, sparkColor, sparkRadius, sparkSize, extraScale]);
 
@@ -124,8 +136,10 @@ function ClickSpark({
       if (!canvas) return;
 
       const rect = canvas.getBoundingClientRect();
-      const x = event.clientX - rect.left;
-      const y = event.clientY - rect.top;
+      // Convert to canvas pixel space if DPR scaling is used
+      const dpr = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
+      const x = (event.clientX - rect.left) * dpr;
+      const y = (event.clientY - rect.top) * dpr;
       const now = performance.now();
 
       const newSparks: Spark[] = Array.from({ length: sparkCount }, (_, index) => ({

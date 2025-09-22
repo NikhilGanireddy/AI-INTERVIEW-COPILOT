@@ -252,12 +252,10 @@ function NavItems({ items }: { items: NavItem[] }) {
           color="white"
           anchorX="center"
           anchorY="middle"
-          depthWrite={false}
           outlineWidth={0}
           outlineBlur="20%"
           outlineColor="#000"
           outlineOpacity={0.5}
-          depthTest={false}
           renderOrder={10}
           onClick={event => {
             event.stopPropagation();
@@ -286,19 +284,19 @@ function Images() {
     if (!group.current) return;
     const children = group.current.children as unknown as THREE.Mesh[];
     if (children.length < 5) return;
-    children[0].material.zoom = 1 + data.range(0, 1 / 3) / 3;
-    children[1].material.zoom = 1 + data.range(0, 1 / 3) / 3;
-    children[2].material.zoom = 1 + data.range(1.15 / 3, 1 / 3) / 2;
-    children[3].material.zoom = 1 + data.range(1.15 / 3, 1 / 3) / 2;
-    children[4].material.zoom = 1 + data.range(1.15 / 3, 1 / 3) / 2;
+    (children[0].material as any).zoom = 1 + data.range(0, 1 / 3) / 3;
+    (children[1].material as any).zoom = 1 + data.range(0, 1 / 3) / 3;
+    (children[2].material as any).zoom = 1 + data.range(1.15 / 3, 1 / 3) / 2;
+    (children[3].material as any).zoom = 1 + data.range(1.15 / 3, 1 / 3) / 2;
+    (children[4].material as any).zoom = 1 + data.range(1.15 / 3, 1 / 3) / 2;
   });
 
   return (
     <group ref={group}>
-      <Image position={[-2, 0, 0]} scale={[3, height / 1.1, 1]} url="/assets/demo/cs1.webp" />
-      <Image position={[2, 0, 3]} scale={3} url="/assets/demo/cs2.webp" />
-      <Image position={[-2.05, -height, 6]} scale={[1, 3, 1]} url="/assets/demo/cs3.webp" />
-      <Image position={[-0.6, -height, 9]} scale={[1, 2, 1]} url="/assets/demo/cs1.webp" />
+      <Image position={[-2, 0, 0]} scale={[3, Number(height) / 1.1]} url="/assets/demo/cs1.webp" />
+      <Image position={[2, 0, 3]} scale={[3, 3]} url="/assets/demo/cs2.webp" />
+      <Image position={[-2.05, -height, 6]} scale={[1, 3]} url="/assets/demo/cs3.webp" />
+      <Image position={[-0.6, -height, 9]} scale={[1, 2]} url="/assets/demo/cs1.webp" />
       <Image position={[0.75, -height, 10.5]} scale={1.5} url="/assets/demo/cs2.webp" />
     </group>
   );
