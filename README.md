@@ -1,137 +1,175 @@
-
-
 # Interview Trainer
+> Real-time AI copilot that listens, coaches, and speaks back during your mock interviews.
 
-**Interview Trainer** is an internal AI-powered platform for practicing, analyzing, and improving interview skills. It provides real-time feedback, voice cloning, live captions, and analytics to help users prepare for interviews more effectively.
-
----
-
-## Table of Contents
-
-- [Project Overview](#project-overview)
-- [Features](#features)
-- [Folder Structure](#folder-structure)
-- [Tech Stack](#tech-stack)
-- [Setup & Installation](#setup--installation)
-- [Environment Variables](#environment-variables)
-- [Scripts](#scripts)
-- [Notes](#notes)
-- [Contact](#contact)
+Interview Trainer bundles live transcription, Grok-powered coaching, and custom voice synthesis into a single Next.js workspace. Capture a meeting tab, stream captions through Deepgram, let Grok craft tailored coaching, and answer in your cloned ElevenLabs voice – all while Clerk keeps the experience gated to signed-in users.
 
 ---
 
-## Project Overview
-
-Interview Trainer enables users to simulate interviews, receive AI-generated questions, transcribe and analyze their answers, and track their progress. The platform leverages advanced speech-to-text and text-to-speech APIs, as well as voice cloning, to create a realistic and interactive interview experience.
-
----
-
-## Features
-
-- **Interview Copilot**: Create and manage interview profiles, upload resumes and job descriptions, and receive AI-generated questions and feedback.
-- **Voice Cloning**: Clone your voice for personalized TTS and practice sessions.
-- **Speech-to-Text (STT)**: Real-time transcription of answers using Deepgram.
-- **Text-to-Speech (TTS)**: Generate lifelike audio responses using ElevenLabs.
-- **Live Captions**: View live transcriptions during meetings or practice sessions.
-- **Dashboard**: Track interview history and performance analytics.
-- **User Settings**: Customize experience and manage data.
-- **Authentication**: Secure access via Clerk.
+## Feature Tour
+- **Interview Copilot workspace** – build reusable candidate profiles (resume, job brief, project notes) with a guided Stepper UI (`app/(directory)/copilot/CopilotForm.tsx`) and manage them inline.
+- **Meeting command center** – capture a browser tab, stream live captions, fire questions to Grok, and archive Q/A history without leaving the page (`app/(directory)/meeting/meeting-client.tsx`).
+- **Voice lab** – clone voices, edit their labels, and try instant TTS playback with streaming ElevenLabs audio (`app/(directory)/voice/clone`, `/voice/tts`).
+- **Speech-to-text studio** – experiment with Deepgram’s SDK across microphone, shared tab, or remote stream modes in a single panel (`app/(directory)/voice/stt/stt-client.tsx`).
+- **Live captions on demand** – spin up a lightweight captioner for a Meet or Zoom tab in seconds (`app/live-captions/LiveCaptions.tsx`).
 
 ---
 
-## Folder Structure
-
+## Architecture at a Glance
 ```
-app/
-  (authorization)/         # Sign-in and sign-up flows
-  (directory)/             # Main features: copilot, dashboard, meeting, voice (clone, stt, tts)
-  api/                     # API routes for answers, copilot, deepgram, meeting, settings, stt, voice
-  live-captions/           # Live captioning components
-  globals.css, layout.tsx  # Global styles and layout
-components/
-  ui/                      # Reusable UI components (button, card, input, etc.)
-  voice/                   # Voice-related components (recorder, edit, delete)
-lib/
-  db.ts                    # Database connection (Mongoose)
-  utils.ts                 # Utility functions
-  models/                  # Mongoose models (InterviewCopilotProfile, MeetingTurn, UserSettings, VoiceProfile)
-public/
-  assets/                  # 3D models and demo images
-  *.svg                    # Static SVG assets
+┌─────────────────────────────── Frontend ───────────────────────────────┐
+│ Next.js 15 App Router                                               │
+│ • UI + client hooks (React 19, Tailwind, Radix)                      │
+│ • Clerk components for auth gating                                   │
+│ • Streaming/audio capture logic (MediaRecorder + Web Audio)          │
+└───────────────────────────────▲───────────────────────────────────────┘
+                                │ fetch / stream
+┌───────────────────────────────┴───────────────────────────────────────┐
+│ API Routes (Node & Edge runtime)                                      │
+│ • `/api/voice/*` → ElevenLabs TTS + cloning                           │
+│ • `/api/stt/*` → Deepgram tokens + remote proxy                       │
+│ • `/api/answers/grok` → Grok SSE streaming                            │
+│ • `/api/copilot/*`, `/api/meeting/*`, `/api/settings`                 │
+└───────────────────────────────▲───────────────────────────────────────┘
+                                │ MongoDB (Mongoose)
+┌───────────────────────────────┴───────────────────────────────────────┐
+│ Database layer (`lib/db.ts`, `lib/models/*`)                          │
+│ • InterviewCopilotProfile, MeetingTurn, VoiceProfile, UserSettings    │
+└───────────────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
 ## Tech Stack
-
-- **Framework**: Next.js 15 (App Router, Edge & Node API routes)
-- **Frontend**: React 19, Tailwind CSS, Radix UI, Lucide Icons
-- **Backend**: Next.js API routes, Mongoose (MongoDB)
-- **AI/ML APIs**: Deepgram (STT), ElevenLabs (TTS)
-- **Authentication**: Clerk
-- **3D/Visuals**: Three.js, React Three Fiber, GSAP, OGL
+- **Framework**: Next.js 15 App Router, React 19, TypeScript
+- **Styling**: Tailwind CSS 4 + Radix UI primitives
+- **Auth**: Clerk middleware & components
+- **Data**: MongoDB via Mongoose models
+- **Speech**: Deepgram SDK (live STT), ElevenLabs JS SDK (TTS & cloning)
+- **LLM**: xAI Grok streaming completions
+- **Enhancements**: GSAP, react-three-fiber, OGL, Motion for animated surfaces
 
 ---
 
-## Setup & Installation
+## Project Layout
+```
+app/                    # Routes + API endpoints
+  (authorization)/      # Clerk sign-in/sign-up flows
+  (directory)/          # Auth-protected workspaces (copilot, meeting, voice)
+  live-captions/        # Lightweight caption tool
+components/             # UI primitives + feature components (Stepper, Recorder)
+lib/                    # DB connector and Mongoose models
+public/                 # Static assets
+middleware.ts           # Clerk protection matcher
+```
 
-1. **Clone the repository** (private, internal use only).
+---
 
-2. **Install dependencies:**
-	```bash
-	npm install
-	# or
-	yarn install
-	# or
-	pnpm install
-	```
+## Getting Started
+1. **Install dependencies**
+   ```bash
+   npm install
+   ```
+2. **Configure environment** – create `.env.local` with the variables listed below.
+3. **Run MongoDB** – point `MONGODB_URI` to Atlas or a local instance.
+4. **Start the dev server**
+   ```bash
+   npm run dev
+   # opens http://localhost:3000 with Turbopack
+   ```
+5. **Sign in** – Clerk requires matching origins (set http://localhost:3000 in the dashboard).
 
-3. **Set up environment variables:**
-	- Copy `.env.example` to `.env.local` and fill in your API keys for Deepgram, ElevenLabs, Clerk, and MongoDB.
-
-4. **Run the development server:**
-	```bash
-	npm run dev
-	# or
-	yarn dev
-	# or
-	pnpm dev
-	```
-	Open [http://localhost:3000](http://localhost:3000) in your browser.
+To ship a production build:
+```bash
+npm run build
+npm start
+```
 
 ---
 
 ## Environment Variables
+| Variable | Required | Purpose |
+| --- | --- | --- |
+| `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` | ✅ | Clerk frontend key for widgets.
+| `CLERK_SECRET_KEY` | ✅ | Clerk server-side secret for auth enforcement.
+| `MONGODB_URI` | ✅ | MongoDB connection string (`interview_coach` DB name used).
+| `DEEPGRAM_API_KEY` | ✅ | Server-side key for issuing ephemeral STT tokens.
+| `NEXT_PUBLIC_DEEPGRAM_API_KEY` | ⚠️ optional | Local fallback if ephemeral token route fails.
+| `ELEVENLABS_API_KEY` | ✅ | Used for cloning voices and streaming TTS.
+| `XAI_API_KEY` or `GROK_API_KEY` | ✅ | Streams Grok completions for coaching answers.
+| `XAI_MODEL` | optional | Override Grok model (defaults to `grok-2-latest`).
 
-You will need to provide the following environment variables in your `.env.local` file:
-
-- `CLERK_SECRET_KEY`
-- `DEEPGRAM_API_KEY`
-- `ELEVENLABS_API_KEY`
-- `MONGODB_URI`
-- (Add any other required keys as needed by your integrations)
-
----
-
-## Scripts
-
-- `dev` — Start the development server
-- `build` — Build for production
-- `start` — Start the production server
-- `lint` — Run ESLint
-
----
-
-## Notes
-
-- This project is for internal/private use only. Do not share or distribute outside your organization.
-- For questions about architecture or extending the platform, contact the project maintainer.
+Example `.env.local`:
+```bash
+NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=pk_test_...
+CLERK_SECRET_KEY=sk_test_...
+MONGODB_URI=mongodb+srv://...
+DEEPGRAM_API_KEY=dg_...
+ELEVENLABS_API_KEY=el_...
+XAI_API_KEY=xaI_...
+```
 
 ---
 
-## Contact
-
-For internal support or questions, contact the project owner or your engineering lead.
+## npm Scripts
+| Command | Description |
+| --- | --- |
+| `npm run dev` | Start Next.js with Turbopack (hot reload + streaming).
+| `npm run build` | Production compile of the App Router + API routes.
+| `npm start` | Launch the built server on port 3000.
 
 ---
-# AI-INTERVIEW-COPILOT
+
+## Core Data Models
+| Model | Stored Fields |
+| --- | --- |
+| `InterviewCopilotProfile` | `userId`, `profileName`, `jobRole`, `resume` variant (uploaded binary or pasted text), `jobDescription` variant, `projectDetails` (`lib/models/InterviewCopilotProfile.ts`). |
+| `MeetingTurn` | Captures each Q/A turn with timestamps, ordering, session + profile linkage (`lib/models/MeetingTurn.ts`). |
+| `VoiceProfile` | ElevenLabs voice registry scoped per user (`lib/models/VoiceProfile.ts`). |
+| `UserSettings` | Flexible per-user settings document (`lib/models/UserSettings.ts`). |
+
+---
+
+## Key API Endpoints
+| Route | Method(s) | Notes |
+| --- | --- | --- |
+| `/api/copilot/profiles` | GET, POST, PATCH, DELETE | CRUD for interview profiles (FormData upload support). |
+| `/api/meeting/history` | GET, POST, PATCH | Persist live meeting questions and Grok answers. |
+| `/api/voice/clone` | POST | Proxy to ElevenLabs voice cloning; stores `VoiceProfile`. |
+| `/api/voice/[voiceId]` | PATCH, DELETE | Rename or remove a cloned voice. |
+| `/api/voice/speak` | POST | ElevenLabs TTS (Node runtime) with automatic voice fallback. |
+| `/api/voice/stream` | GET | Edge-optimised streaming TTS for low-latency playback. |
+| `/api/stt/deepgram-token` | GET | Issues user-scoped Deepgram tokens via SDK grant. |
+| `/api/stt/remote` | GET | CORS-safe audio proxy for remote streams fed into Deepgram. |
+| `/api/answers/grok` | POST | xAI Grok chat completions streamed via SSE. |
+| `/api/settings` | GET, POST | Store arbitrary per-user preferences with `$set`. |
+
+---
+
+## Development Notes
+- **Auth-first**: `middleware.ts` wraps every route with Clerk; local dev needs valid Clerk keys.
+- **Streaming everywhere**: Meeting and STT features rely on long-lived WebSockets and SSE. Keep dev tools open to inspect event frames.
+- **Voice uploads**: `app/(directory)/voice/clone/CloneVoiceForm.tsx` accepts WEBM/MP3/WAV and shows inline success/error states. Files post directly to `/api/voice/clone`.
+- **Deepgram modes**: `app/(directory)/voice/stt/stt-client.tsx` demonstrates three modes (mic, screen, remote URL) plus PCM fallbacks for Safari.
+- **History sync**: Meeting answers persist through `/api/meeting/history` so refreshing the page restores prior turns for the selected profile.
+- **Edge vs Node**: High-throughput TTS streaming lives on the Edge runtime; cloning and DB-backed routes stay on Node to access Mongoose.
+
+---
+
+## Troubleshooting
+- **401 responses** – confirm Clerk keys and that the site URL matches your dashboard configuration.
+- **Deepgram token fails** – ensure `DEEPGRAM_API_KEY` is set; the SDK grant in `/api/stt/deepgram-token` returns status + TTL in logs.
+- **ElevenLabs upload 4xx** – audio samples must be shorter than 30s and `ELEVENLABS_API_KEY` must have cloning enabled.
+- **Mongo connection errors** – whitelist your IP in Atlas or run `mongod` locally and update `MONGODB_URI`.
+
+---
+
+## Roadmap Ideas
+- AI scoring rubrics per competency.
+- Team dashboards with shareable session recaps.
+- WebRTC peer coaching or mentor co-pilot seats.
+- Automatic resume/JD parsing using LangChain or embeddings.
+
+---
+
+## License
+Private repository – proprietary software. All rights reserved.
