@@ -8,6 +8,17 @@ import { PerspectiveCamera } from "@react-three/drei";
 
 import "./beams.css";
 
+type ShaderLibEntry = {
+  vertexShader: string;
+  fragmentShader: string;
+  uniforms: Record<string, THREE.IUniform>;
+  defines?: Record<string, unknown>;
+};
+
+function hasFog(x: unknown): x is { fog?: boolean } {
+  return typeof x === "object" && x !== null && "fog" in (x as Record<string, unknown>);
+}
+
 function extendMaterial<T extends typeof THREE.MeshStandardMaterial>(BaseMaterial: T, cfg: {
   header: string;
   vertexHeader?: string;
@@ -17,10 +28,13 @@ function extendMaterial<T extends typeof THREE.MeshStandardMaterial>(BaseMateria
   uniforms?: Record<string, unknown>;
   material?: ConstructorParameters<T>[0];
 }) {
-  // Use ShaderLib.standard if available, otherwise fall back to physical.
-  const lib =
-    (THREE.ShaderLib as any).standard ?? (THREE.ShaderLib as any).physical;
-  if (!lib) throw new Error("Required shader lib not available in this Three.js build.");
+  // Prefer standard shader lib. Fall back to physical if needed.
+  const shaderLib = THREE.ShaderLib as unknown as {
+    standard?: ShaderLibEntry;
+    physical?: ShaderLibEntry;
+  };
+  const lib = shaderLib.standard ?? shaderLib.physical;
+  if (!lib) throw new Error("ShaderLib.standard or ShaderLib.physical not available.");
 
   const { vertexShader: baseVert, fragmentShader: baseFrag, uniforms: baseUniforms, defines: libDefines } = lib;
   const baseDefines = libDefines ?? {};
@@ -29,16 +43,27 @@ function extendMaterial<T extends typeof THREE.MeshStandardMaterial>(BaseMateria
 
   const defaults = new BaseMaterial(cfg.material || {});
 
-  if ((defaults as THREE.MeshStandardMaterial).color) uniforms.diffuse.value = (defaults as THREE.MeshStandardMaterial).color;
-  if ("roughness" in defaults) uniforms.roughness.value = (defaults as THREE.MeshStandardMaterial).roughness as number;
-  if ("metalness" in defaults) uniforms.metalness.value = (defaults as THREE.MeshStandardMaterial).metalness as number;
-  if ("envMap" in defaults) uniforms.envMap.value = (defaults as THREE.MeshStandardMaterial).envMap as THREE.Texture | null;
-  if ("envMapIntensity" in defaults) uniforms.envMapIntensity.value = (defaults as THREE.MeshStandardMaterial).envMapIntensity as number;
+  if ((defaults as THREE.MeshStandardMaterial).color) {
+    uniforms.diffuse.value = (defaults as THREE.MeshStandardMaterial).color;
+  }
+  if ("roughness" in defaults) {
+    uniforms.roughness.value = (defaults as THREE.MeshStandardMaterial).roughness as number;
+  }
+  if ("metalness" in defaults) {
+    uniforms.metalness.value = (defaults as THREE.MeshStandardMaterial).metalness as number;
+  }
+  if ("envMap" in defaults) {
+    uniforms.envMap.value = (defaults as THREE.MeshStandardMaterial).envMap as THREE.Texture | null;
+  }
+  if ("envMapIntensity" in defaults) {
+    uniforms.envMapIntensity.value = (defaults as THREE.MeshStandardMaterial).envMapIntensity as number;
+  }
 
   Object.entries(cfg.uniforms ?? {}).forEach(([key, uniform]) => {
-    uniforms[key] = uniform && typeof uniform === "object" && "value" in (uniform as Record<string, unknown>)
+    const u = (uniform as { value?: unknown })?.value !== undefined
       ? (uniform as { value: unknown })
       : { value: uniform };
+    uniforms[key] = u as THREE.IUniform;
   });
 
   let vert = `${cfg.header}\n${cfg.vertexHeader ?? ""}\n${baseVert}`;
@@ -58,7 +83,7 @@ function extendMaterial<T extends typeof THREE.MeshStandardMaterial>(BaseMateria
     vertexShader: vert,
     fragmentShader: frag,
     lights: true,
-    fog: Boolean((cfg.material as any)?.fog),
+    fog: hasFog(cfg.material) ? Boolean(cfg.material.fog) : false,
   });
 
   return mat;
@@ -103,7 +128,6 @@ float cnoise(vec3 P){
   vec3 Pi0 = floor(P);
   vec3 Pi1 = Pi0 + vec3(1.0);
   Pi0 = mod(Pi0, 289.0);
-  Pi1 = mod(Pi1, 289.0);
   vec3 Pf0 = fract(P);
   vec3 Pf1 = Pf0 - vec3(1.0);
   vec4 ix = vec4(Pi0.x,Pi1.x,Pi0.x,Pi1.x);
@@ -219,10 +243,10 @@ const Beams = ({
       material: { fog: true },
       uniforms: {
         diffuse: new THREE.Color(...hexToNormalizedRGB("#000000")),
-        time: { shared: true, mixed: true, linked: true, value: 0 },
+        time: { value: 0 },
         roughness: 0.3,
         metalness: 0.3,
-        uSpeed: { shared: true, mixed: true, linked: true, value: speed },
+        uSpeed: { value: speed },
         envMapIntensity: 10,
         uNoiseIntensity: noiseIntensity,
         uScale: scale,
@@ -310,8 +334,11 @@ const MergedPlanes = forwardRef(function MergedPlanes(
   useImperativeHandle(ref, () => mesh.current as MeshRef);
   const geometry = useMemo(() => createStackedPlanesBufferGeometry(count, width, height, 0, 100), [count, width, height]);
   useFrame((_, delta) => {
-    if (mesh.current?.material && "uniforms" in mesh.current.material) {
-      (mesh.current.material as THREE.ShaderMaterial).uniforms.time.value += 0.1 * delta;
+    if (mesh.current) {
+      const m = mesh.current.material;
+      if (m.uniforms.time) {
+        m.uniforms.time.value = (m.uniforms.time.value as number) + 0.1 * delta;
+      }
     }
   });
   return <mesh ref={mesh} geometry={geometry} material={material} />;
