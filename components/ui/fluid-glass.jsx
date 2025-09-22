@@ -19,44 +19,11 @@ import {
 } from "@react-three/drei";
 import { easing } from "maath";
 
-type BaseModeProps = {
-  scale?: number;
-  ior?: number;
-  thickness?: number;
-  anisotropy?: number;
-  chromaticAberration?: number;
-  transmission?: number;
-  roughness?: number;
-  color?: string;
-  attenuationColor?: string;
-  attenuationDistance?: number;
-};
-
-type NavItem = { label: string; link: string };
-
-type FluidGlassProps = {
-  mode?: "lens" | "bar" | "cube";
-  className?: string;
-  canvasClassName?: string;
-  lensProps?: BaseModeProps & { navItems?: NavItem[] };
-  barProps?: BaseModeProps & { navItems?: NavItem[] };
-  cubeProps?: BaseModeProps & { navItems?: NavItem[] };
-};
-
-const DEFAULT_NAV_ITEMS: NavItem[] = [
+const DEFAULT_NAV_ITEMS = [
   { label: "Home", link: "" },
   { label: "About", link: "" },
   { label: "Contact", link: "" }
 ];
-
-type ModeWrapperProps = {
-  children: React.ReactNode;
-  glb: string;
-  geometryKey: string;
-  lockToBottom?: boolean;
-  followPointer?: boolean;
-  modeProps: BaseModeProps;
-};
 
 function ModeWrapper({
   children,
@@ -64,17 +31,19 @@ function ModeWrapper({
   geometryKey,
   lockToBottom = false,
   followPointer = true,
-  modeProps
-}: ModeWrapperProps) {
-  const ref = useRef<THREE.Mesh>(null);
-  const { nodes } = useGLTF(glb) as unknown as { nodes: Record<string, { geometry: THREE.BufferGeometry }> };
+  modeProps = {}
+}) {
+  const ref = useRef(null);
+  const gltf = useGLTF(glb);
+  const nodes = (gltf && gltf.nodes) || {};
   const buffer = useFBO();
   const { viewport: vp } = useThree();
   const [scene] = useState(() => new THREE.Scene());
   const geoWidthRef = useRef(1);
 
   useEffect(() => {
-    const geometry = nodes[geometryKey]?.geometry;
+    const node = nodes[geometryKey];
+    const geometry = node && node.geometry;
     if (!geometry) return;
     geometry.computeBoundingBox();
     const box = geometry.boundingBox;
@@ -103,7 +72,18 @@ function ModeWrapper({
     gl.setClearColor(0x5227ff, 1);
   });
 
-  const { scale, ior, thickness, anisotropy, chromaticAberration, ...extra } = modeProps;
+  const {
+    scale,
+    ior,
+    thickness,
+    anisotropy,
+    chromaticAberration,
+    transmission,
+    roughness,
+    color,
+    attenuationColor,
+    attenuationDistance
+  } = modeProps;
 
   return (
     <>
@@ -116,7 +96,7 @@ function ModeWrapper({
         ref={ref}
         scale={scale ?? 0.15}
         rotation-x={Math.PI / 2}
-        geometry={nodes[geometryKey]?.geometry}
+        geometry={nodes[geometryKey] ? nodes[geometryKey].geometry : undefined}
       >
         <MeshTransmissionMaterial
           buffer={buffer.texture}
@@ -124,14 +104,18 @@ function ModeWrapper({
           thickness={thickness ?? 5}
           anisotropy={anisotropy ?? 0.01}
           chromaticAberration={chromaticAberration ?? 0.1}
-          {...extra}
+          transmission={transmission}
+          roughness={roughness}
+          color={color}
+          attenuationColor={attenuationColor}
+          attenuationDistance={attenuationDistance}
         />
       </mesh>
     </>
   );
 }
 
-const Lens = memo(function Lens({ modeProps }: { modeProps: BaseModeProps }) {
+const Lens = memo(function Lens({ modeProps = {} }) {
   return (
     <ModeWrapper glb="/assets/3d/lens.glb" geometryKey="Cylinder" followPointer modeProps={modeProps}>
       <Scroll>
@@ -144,7 +128,7 @@ const Lens = memo(function Lens({ modeProps }: { modeProps: BaseModeProps }) {
   );
 });
 
-const Cube = memo(function Cube({ modeProps }: { modeProps: BaseModeProps }) {
+const Cube = memo(function Cube({ modeProps = {} }) {
   return (
     <ModeWrapper glb="/assets/3d/cube.glb" geometryKey="Cube" followPointer modeProps={modeProps}>
       <Scroll>
@@ -157,14 +141,8 @@ const Cube = memo(function Cube({ modeProps }: { modeProps: BaseModeProps }) {
   );
 });
 
-const Bar = memo(function Bar({
-  modeProps,
-  navItems
-}: {
-  modeProps: BaseModeProps;
-  navItems: NavItem[];
-}) {
-  const defaults: BaseModeProps = {
+const Bar = memo(function Bar({ modeProps = {}, navItems = DEFAULT_NAV_ITEMS }) {
+  const defaults = {
     transmission: 1,
     roughness: 0,
     thickness: 10,
@@ -194,15 +172,15 @@ const Bar = memo(function Bar({
   );
 });
 
-function NavItems({ items }: { items: NavItem[] }) {
-  const group = useRef<THREE.Group>(null);
+function NavItems({ items = DEFAULT_NAV_ITEMS }) {
+  const group = useRef(null);
   const { viewport, camera } = useThree();
 
   const DEVICE = {
     mobile: { max: 639, spacing: 0.2, fontSize: 0.035 },
     tablet: { max: 1023, spacing: 0.24, fontSize: 0.035 },
     desktop: { max: Infinity, spacing: 0.3, fontSize: 0.035 }
-  } as const;
+  };
 
   const getDevice = useMemo(
     () => () => {
@@ -212,11 +190,10 @@ function NavItems({ items }: { items: NavItem[] }) {
     []
   );
 
-  const [device, setDevice] = useState<keyof typeof DEVICE>("desktop");
+  const [device, setDevice] = useState("desktop");
 
   useEffect(() => {
     setDevice(getDevice());
-
     const onResize = () => setDevice(getDevice());
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
@@ -228,13 +205,12 @@ function NavItems({ items }: { items: NavItem[] }) {
     if (!group.current) return;
     const v = viewport.getCurrentViewport(camera, [0, 0, 15]);
     group.current.position.set(0, -v.height / 2 + 0.2, 15.1);
-
     group.current.children.forEach((child, index) => {
       child.position.x = (index - (items.length - 1) / 2) * spacing;
     });
   });
 
-  const handleNavigate = (link: string) => {
+  const handleNavigate = (link) => {
     if (!link) return;
     if (link.startsWith("#")) {
       window.location.hash = link;
@@ -257,7 +233,7 @@ function NavItems({ items }: { items: NavItem[] }) {
           outlineColor="#000"
           outlineOpacity={0.5}
           renderOrder={10}
-          onClick={event => {
+          onClick={(event) => {
             event.stopPropagation();
             handleNavigate(link);
           }}
@@ -276,19 +252,19 @@ function NavItems({ items }: { items: NavItem[] }) {
 }
 
 function Images() {
-  const group = useRef<THREE.Group>(null);
+  const group = useRef(null);
   const data = useScroll();
-  const { height } = useThree(state => state.viewport);
+  const { height } = useThree((state) => state.viewport);
 
   useFrame(() => {
     if (!group.current) return;
-    const children = group.current.children as unknown as THREE.Mesh[];
+    const children = group.current.children || [];
     if (children.length < 5) return;
-    (children[0].material as any).zoom = 1 + data.range(0, 1 / 3) / 3;
-    (children[1].material as any).zoom = 1 + data.range(0, 1 / 3) / 3;
-    (children[2].material as any).zoom = 1 + data.range(1.15 / 3, 1 / 3) / 2;
-    (children[3].material as any).zoom = 1 + data.range(1.15 / 3, 1 / 3) / 2;
-    (children[4].material as any).zoom = 1 + data.range(1.15 / 3, 1 / 3) / 2;
+    if (children[0].material) children[0].material.zoom = 1 + data.range(0, 1 / 3) / 3;
+    if (children[1].material) children[1].material.zoom = 1 + data.range(0, 1 / 3) / 3;
+    if (children[2].material) children[2].material.zoom = 1 + data.range(1.15 / 3, 1 / 3) / 2;
+    if (children[3].material) children[3].material.zoom = 1 + data.range(1.15 / 3, 1 / 3) / 2;
+    if (children[4].material) children[4].material.zoom = 1 + data.range(1.15 / 3, 1 / 3) / 2;
   });
 
   return (
@@ -307,15 +283,15 @@ function Typography() {
     mobile: { fontSize: 0.2 },
     tablet: { fontSize: 0.4 },
     desktop: { fontSize: 0.6 }
-  } as const;
+  };
 
   const getDevice = () => {
-    if (typeof window === "undefined") return "desktop" as const;
+    if (typeof window === "undefined") return "desktop";
     const w = window.innerWidth;
     return w <= 639 ? "mobile" : w <= 1023 ? "tablet" : "desktop";
   };
 
-  const [device, setDevice] = useState<"mobile" | "tablet" | "desktop">(getDevice());
+  const [device, setDevice] = useState(getDevice());
 
   useEffect(() => {
     const onResize = () => setDevice(getDevice());
@@ -350,10 +326,9 @@ export default function FluidGlass({
   lensProps = {},
   barProps = {},
   cubeProps = {}
-}: FluidGlassProps) {
+}) {
   const Wrapper = mode === "bar" ? Bar : mode === "cube" ? Cube : Lens;
   const rawOverrides = mode === "bar" ? barProps : mode === "cube" ? cubeProps : lensProps;
-
   const { navItems = DEFAULT_NAV_ITEMS, ...modeProps } = rawOverrides;
 
   return (
