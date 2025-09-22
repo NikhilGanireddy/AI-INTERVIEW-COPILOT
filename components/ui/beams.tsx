@@ -17,19 +17,23 @@ function extendMaterial<T extends typeof THREE.MeshStandardMaterial>(BaseMateria
   uniforms?: Record<string, unknown>;
   material?: ConstructorParameters<T>[0];
 }) {
-  const physical = THREE.ShaderLib.physical;
-  const { vertexShader: baseVert, fragmentShader: baseFrag, uniforms: baseUniforms } = physical;
-  const baseDefines = physical.defines ?? {};
+  // Use ShaderLib.standard if available, otherwise fall back to physical.
+  const lib =
+    (THREE.ShaderLib as any).standard ?? (THREE.ShaderLib as any).physical;
+  if (!lib) throw new Error("Required shader lib not available in this Three.js build.");
+
+  const { vertexShader: baseVert, fragmentShader: baseFrag, uniforms: baseUniforms, defines: libDefines } = lib;
+  const baseDefines = libDefines ?? {};
 
   const uniforms = THREE.UniformsUtils.clone(baseUniforms);
 
   const defaults = new BaseMaterial(cfg.material || {});
 
   if ((defaults as THREE.MeshStandardMaterial).color) uniforms.diffuse.value = (defaults as THREE.MeshStandardMaterial).color;
-  if ("roughness" in defaults) uniforms.roughness.value = (defaults as THREE.MeshStandardMaterial).roughness;
-  if ("metalness" in defaults) uniforms.metalness.value = (defaults as THREE.MeshStandardMaterial).metalness;
-  if ("envMap" in defaults) uniforms.envMap.value = (defaults as THREE.MeshStandardMaterial).envMap;
-  if ("envMapIntensity" in defaults) uniforms.envMapIntensity.value = (defaults as THREE.MeshStandardMaterial).envMapIntensity;
+  if ("roughness" in defaults) uniforms.roughness.value = (defaults as THREE.MeshStandardMaterial).roughness as number;
+  if ("metalness" in defaults) uniforms.metalness.value = (defaults as THREE.MeshStandardMaterial).metalness as number;
+  if ("envMap" in defaults) uniforms.envMap.value = (defaults as THREE.MeshStandardMaterial).envMap as THREE.Texture | null;
+  if ("envMapIntensity" in defaults) uniforms.envMapIntensity.value = (defaults as THREE.MeshStandardMaterial).envMapIntensity as number;
 
   Object.entries(cfg.uniforms ?? {}).forEach(([key, uniform]) => {
     uniforms[key] = uniform && typeof uniform === "object" && "value" in (uniform as Record<string, unknown>)
@@ -54,7 +58,7 @@ function extendMaterial<T extends typeof THREE.MeshStandardMaterial>(BaseMateria
     vertexShader: vert,
     fragmentShader: frag,
     lights: true,
-    fog: Boolean(cfg.material?.fog),
+    fog: Boolean((cfg.material as any)?.fog),
   });
 
   return mat;
