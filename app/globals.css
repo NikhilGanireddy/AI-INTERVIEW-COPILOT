@@ -120,3 +120,25 @@
     @apply bg-background text-foreground text-xs;
   }
 }
+
+/* ==== Glass utilities ==== */
+@layer utilities {
+  .glass {
+    /* generic glass surface for containers */
+    @apply backdrop-blur-xl bg-white/10 dark:bg-neutral-900/40 border border-white/20 dark:border-white/10 shadow-lg;
+  }
+  .glass-hover:hover {
+    @apply border-white/30 shadow-xl;
+  }
+}
+
+/* sensible defaults used by GlassSurface component */
+:root {
+  --glass-blur: 16px;
+  --glass-rgb: 255 255 255;
+  --glass-alpha: 0.06;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .backdrop-blur-\[var\(--glass-blur\)\] { backdrop-filter: none; -webkit-backdrop-filter: none; }
+}
