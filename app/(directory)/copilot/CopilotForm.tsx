@@ -252,7 +252,7 @@ export default function InterviewCopilotForm() {
         setProfiles(Array.isArray(data.profiles) ? data.profiles : []);
         setLoadError(null);
       } catch (error) {
-        console.error("Unable to load copilot profiles", error);
+        console.error("Unable to load Copilot Assistant profiles", error);
         if (!cancelled) setLoadError((error as Error).message || "Unable to load profiles");
       } finally {
         if (!cancelled) setIsLoadingProfiles(false);
@@ -285,10 +285,10 @@ export default function InterviewCopilotForm() {
         throw new Error(raw || `Failed to delete profile (${res.status})`);
       }
       setProfiles((prev) => prev.filter((item) => item.id !== profileId));
-      setStatus("Copilot profile deleted.");
+      setStatus("Copilot Assistant profile deleted.");
       return true;
     } catch (error) {
-      console.error("Delete copilot profile failed", error);
+      console.error("Delete Copilot Assistant profile failed", error);
       setStatus((error as Error).message || "Unable to delete profile. Please try again.");
       return false;
     } finally {
@@ -320,10 +320,10 @@ export default function InterviewCopilotForm() {
         throw new Error("Profile update incomplete");
       }
       setProfiles((prev) => [data.profile!, ...prev.filter((item) => item.id !== profileId)]);
-      setStatus("Copilot profile renamed.");
+      setStatus("Copilot Assistant profile renamed.");
       return true;
     } catch (error) {
-      console.error("Rename copilot profile failed", error);
+      console.error("Rename Copilot Assistant profile failed", error);
       setStatus((error as Error).message || "Unable to rename profile. Please try again.");
       return false;
     } finally {
@@ -456,7 +456,7 @@ export default function InterviewCopilotForm() {
       if (savedProfile) {
         setProfiles((prev) => [savedProfile, ...prev.filter((item) => item.id !== savedProfile.id)]);
       }
-      setStatus("Copilot profile saved.");
+      setStatus("Copilot Assistant profile saved.");
       success = true;
     } catch (error) {
       console.error(error);
@@ -501,7 +501,7 @@ export default function InterviewCopilotForm() {
     isSubmitting,
   ]);
 
-  const helperMessage = status ?? "Fill in the steps above to hand your copilot everything it needs.";
+  const helperMessage = status ?? "Fill in the steps above to hand your Copilot Assistant everything it needs.";
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-4">
@@ -518,7 +518,7 @@ export default function InterviewCopilotForm() {
           {loadError ? <p className="text-[0.65rem] text-destructive">{loadError}</p> : null}
           {!isLoadingProfiles && !loadError && !profiles.length ? (
             <p className="text-[0.65rem] text-muted-foreground">
-              You don’t have any profiles yet. Complete the steps below to create your first interview copilot.
+              You don’t have any profiles yet. Complete the steps below to create your first Copilot Assistant profile.
             </p>
           ) : null}
           <ProfilesGrid
@@ -555,7 +555,7 @@ export default function InterviewCopilotForm() {
               <div className="space-y-1">
                 <h2 className="text-sm font-semibold uppercase tracking-tight text-foreground">Profile basics</h2>
                 <p className="text-xs text-muted-foreground">
-                  Give your copilot a clear name and specify the target job role.
+                  Give your Copilot Assistant a clear name and specify the target job role.
                 </p>
               </div>
               <div className="grid gap-3">
@@ -597,7 +597,7 @@ export default function InterviewCopilotForm() {
                 <div>
                   <h2 className="text-sm font-semibold uppercase tracking-tight">Resume</h2>
                   <p className="text-xs text-muted-foreground">
-                    Upload your resume or paste the highlights you want your copilot to use.
+                    Upload your resume or paste the highlights you want your Copilot Assistant to use.
                   </p>
                 </div>
                 <div className="flex gap-2">
@@ -655,7 +655,7 @@ export default function InterviewCopilotForm() {
                 <div>
                   <h2 className="text-sm font-semibold uppercase tracking-tight">Job description</h2>
                   <p className="text-xs text-muted-foreground">
-                    Add the job description so the copilot can tailor answers to the role.
+                    Add the job description so the Copilot Assistant can tailor answers to the role.
                   </p>
                 </div>
                 <div className="flex gap-2">
@@ -717,7 +717,7 @@ export default function InterviewCopilotForm() {
               <div className="space-y-1">
                 <h2 className="text-sm font-semibold uppercase tracking-tight">Project & research highlights</h2>
                 <p className="text-xs text-muted-foreground">
-                  Share the work you want the copilot to reference in coaching sessions.
+                  Share the work you want the Copilot Assistant to reference in coaching sessions.
                 </p>
               </div>
               <textarea
@@ -740,7 +740,7 @@ export default function InterviewCopilotForm() {
               <div className="space-y-1">
                 <h2 className="text-sm font-semibold uppercase tracking-tight">Review & save</h2>
                 <p className="text-xs text-muted-foreground">
-                  Confirm everything looks right before saving this interview copilot profile.
+                  Confirm everything looks right before saving this Copilot Assistant profile.
                 </p>
               </div>
               <div className="space-y-3 rounded-xl border border-border/60 bg-background/80 p-4 text-xs shadow-sm">
@@ -773,8 +773,8 @@ export default function InterviewCopilotForm() {
               </div>
               <p className="text-[0.65rem] text-muted-foreground">
                 {isSubmitting
-                  ? "Saving your copilot profile…"
-                  : "Click Save profile to create or update this copilot."}
+                  ? "Saving your Copilot Assistant profile…"
+                  : "Click Save profile to create or update this Copilot Assistant."}
               </p>
             </div>
           </Step>

@@ -147,7 +147,11 @@ function renderAnswerContent(answer: string) {
   return <div className="space-y-1">{cleaned}</div>;
 }
 
-export default function MeetingClient() {
+type MeetingClientProps = {
+  initialMinutes: number;
+};
+
+export default function MeetingClient({ initialMinutes }: MeetingClientProps) {
   const [status, setStatus] = useState<string>("Idle");
   const [capturing, setCapturing] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
@@ -184,6 +188,23 @@ export default function MeetingClient() {
   const [profileDetailError, setProfileDetailError] = useState<string | null>(null);
   const [customInstructionsInput, setCustomInstructionsInput] = useState("");
   const [customInstructions, setCustomInstructions] = useState("");
+  const [availableMinutes, setAvailableMinutes] = useState(initialMinutes);
+  const availableMinutesRef = useRef<number>(initialMinutes);
+  const captureStartedAtRef = useRef<number | null>(null);
+  const creditTickerRef = useRef<number | null>(null);
+  const liveElapsedSecondsRef = useRef(0);
+  const [liveElapsedSeconds, setLiveElapsedSeconds] = useState(0);
+  useEffect(() => {
+    availableMinutesRef.current = availableMinutes;
+  }, [availableMinutes]);
+
+  useEffect(() => {
+    setAvailableMinutes((prev) => {
+      if (prev === initialMinutes) return prev;
+      return initialMinutes;
+    });
+    availableMinutesRef.current = initialMinutes;
+  }, [initialMinutes]);
   useEffect(() => {
     if (!selectedProfileId && profiles.length > 0 && !profilesLoading && !profilesError) {
       setSelectedProfileId(profiles[0].id);
@@ -231,7 +252,7 @@ export default function MeetingClient() {
         setProfiles(Array.isArray(data.profiles) ? data.profiles : []);
         setProfilesError(null);
       } catch (error) {
-        console.error("Unable to load copilot profiles", error);
+        console.error("Unable to load Copilot Assistant profiles", error);
         if (!cancelled) setProfilesError((error as Error).message || "Unable to load profiles");
       } finally {
         if (!cancelled) setProfilesLoading(false);
@@ -333,6 +354,90 @@ export default function MeetingClient() {
     el.scrollTop = el.scrollHeight;
   }, [transcriptInput, livePartial]);
 
+  const refreshCredits = useCallback(async (): Promise<number | null> => {
+    try {
+      const res = await fetch("/api/subscription", {
+        method: "GET",
+        credentials: "include",
+        cache: "no-store",
+      });
+      if (!res.ok) return null;
+      const data = (await res.json().catch(() => ({}))) as {
+        subscription?: { balanceMinutes?: number };
+      };
+      const minutes = typeof data.subscription?.balanceMinutes === "number"
+        ? Math.max(0, data.subscription.balanceMinutes)
+        : 0;
+      setAvailableMinutes(minutes);
+      availableMinutesRef.current = minutes;
+      return minutes;
+    } catch {
+      return null;
+    }
+  }, []);
+
+  useEffect(() => {
+    void refreshCredits();
+  }, [refreshCredits]);
+
+  const clearCreditTicker = useCallback(() => {
+    if (creditTickerRef.current != null) {
+      window.clearInterval(creditTickerRef.current);
+      creditTickerRef.current = null;
+    }
+    liveElapsedSecondsRef.current = 0;
+    setLiveElapsedSeconds(0);
+  }, []);
+
+  const startCreditTicker = useCallback(() => {
+    captureStartedAtRef.current = Date.now();
+    liveElapsedSecondsRef.current = 0;
+    setLiveElapsedSeconds(0);
+    if (creditTickerRef.current != null) {
+      window.clearInterval(creditTickerRef.current);
+    }
+    creditTickerRef.current = window.setInterval(() => {
+      if (!captureStartedAtRef.current) return;
+      const elapsed = Math.max(0, Math.floor((Date.now() - captureStartedAtRef.current) / 1000));
+      if (elapsed !== liveElapsedSecondsRef.current) {
+        liveElapsedSecondsRef.current = elapsed;
+        setLiveElapsedSeconds(elapsed);
+      }
+    }, 1000);
+  }, []);
+
+  const settleCredits = useCallback(async () => {
+    const startedAt = captureStartedAtRef.current;
+    captureStartedAtRef.current = null;
+    const elapsedMs = startedAt ? Date.now() - startedAt : 0;
+    clearCreditTicker();
+    if (!startedAt || elapsedMs <= 0) return;
+
+    const elapsedSeconds = elapsedMs / 1000;
+    const rawMinutes = elapsedSeconds / 60;
+    const roundedMinutes = Math.max(0.01, Number(rawMinutes.toFixed(2)));
+    const minutesToDeduct = Math.min(roundedMinutes, Math.max(availableMinutesRef.current, 0));
+    if (!Number.isFinite(minutesToDeduct) || minutesToDeduct <= 0) return;
+
+    try {
+      const response = await fetch("/api/subscription", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ minutes: minutesToDeduct }),
+      });
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}));
+        throw new Error(payload?.error ?? "Unable to record credit usage");
+      }
+      await refreshCredits();
+    } catch (error) {
+      console.error("Failed to consume credits", error);
+      setNotice((error as Error).message || "Unable to update credits");
+      setTimeout(() => setNotice(null), 3000);
+    }
+  }, [clearCreditTicker, refreshCredits, setNotice]);
+
   useEffect(() => {
     let cancelled = false;
     async function loadHistory() {
@@ -374,7 +479,7 @@ export default function MeetingClient() {
       } catch (error) {
         console.error("Failed to load meeting history", error);
         if (!cancelled) {
-          setNotice((error as Error).message || "Unable to load meeting history");
+          setNotice((error as Error).message || "Unable to load Interview Copilot history");
         }
       }
     }
@@ -426,7 +531,7 @@ export default function MeetingClient() {
         });
         if (!res.ok) {
           const raw = await res.text().catch(() => "");
-          throw new Error(raw || `Meeting history save failed (${res.status})`);
+        throw new Error(raw || `Interview Copilot history save failed (${res.status})`);
         }
         const data = (await res.json().catch(() => ({}))) as {
           turn?: { id?: string };
@@ -495,7 +600,7 @@ export default function MeetingClient() {
       });
       if (!res.ok) {
         const raw = await res.text().catch(() => "");
-        throw new Error(raw || `Meeting history update failed (${res.status})`);
+        throw new Error(raw || `Interview Copilot history update failed (${res.status})`);
       }
     } catch (error) {
       console.error("Failed to update meeting answer", error);
@@ -503,155 +608,155 @@ export default function MeetingClient() {
   }, []);
 
   const askGrok = useCallback(
-  async (
-    question: string,
-    id: number,
-    existingRecordId: string | null = null,
-    askedAtISO?: string
-  ) => {
-    if (!selectedProfileId) {
-      setNotice("Select an interview copilot profile before continuing.");
-      setTimeout(() => setNotice(null), 2500);
-      return;
-    }
-    if (!selectedProfile) {
-      setNotice("Profile context unavailable. Please reselect your copilot profile.");
-      setTimeout(() => setNotice(null), 2500);
-      return;
-    }
-    let answerBuffer = "";
-    let answeredAtISO: string | null = null;
-    let storedRecordId: string | null = existingRecordId;
-    try {
-      // Cancel any in-flight request
-      try { currentAnswerAbortRef.current?.abort(); } catch { }
-      const ac = new AbortController();
-      currentAnswerAbortRef.current = ac;
-      setQa((prev) =>
-        prev.map((item) => (item.id === id ? { ...item, answering: true } : item))
-      );
-
-      // Build conversational history from prior QA items (user -> assistant turns)
-      const historyMessages: Array<{ role: 'user' | 'assistant'; content: string }> = [];
-      for (const item of qaRef.current) {
-        if (item.q) historyMessages.push({ role: 'user', content: item.q });
-        if (item.a) historyMessages.push({ role: 'assistant', content: item.a });
-      }
-      // Limit to last ~6 turns to keep prompt short
-      const MAX_TURNS = 4;
-      let trimmedHistory = historyMessages;
-      if (historyMessages.length > MAX_TURNS * 2) {
-        trimmedHistory = historyMessages.slice(historyMessages.length - MAX_TURNS * 2);
-      }
-
-      const baseSystem = 'You are a concise technical interview coach. Keep answers short and contextual.';
-      const instructionsTrimmed = customInstructions.trim();
-      const systemSections: string[] = [baseSystem];
-      if (profilePrompt) {
-        systemSections.push(`Candidate context:\n${profilePrompt}`);
-      }
-      if (instructionsTrimmed) {
-        systemSections.push(`Tone guidance from user: ${instructionsTrimmed}`);
-      }
-      const systemWithContext = systemSections.join('\n\n');
-
-      const res = await fetch('/api/answers/grok', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          question,
-          system: systemWithContext,
-          history: trimmedHistory,
-        }),
-        signal: ac.signal,
-      });
-      if (!res.ok || !res.body) {
-        const raw = await res.text().catch(() => "");
-        setQa((prev) => prev.map((item) => item.id === id ? { ...item, a: raw || `Error ${res.status}` , answering: false } : item));
+    async (
+      question: string,
+      id: number,
+      existingRecordId: string | null = null,
+      askedAtISO?: string
+    ) => {
+      if (!selectedProfileId) {
+        setNotice("Select a Copilot Assistant profile before continuing.");
+        setTimeout(() => setNotice(null), 2500);
         return;
       }
-      const reader = res.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = "";
-      let doneStream = false;
-      while (true) {
-        const { value, done } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-        // SSE frames are separated by double newlines
-        const parts = buffer.split("\n\n");
-        buffer = parts.pop() || "";
-        for (const part of parts) {
-          const lines = part.split("\n");
-          for (const ln of lines) {
-            const line = ln.trim();
-            if (!line || !line.startsWith('data:')) continue;
-            const data = line.slice(5).trim();
-            if (data === '[DONE]') { doneStream = true; break; }
-            try {
-              const json = JSON.parse(data);
-              const delta = json?.choices?.[0]?.delta?.content ?? json?.choices?.[0]?.text ?? '';
-              if (delta) {
-                answerBuffer += String(delta);
-                setQa((prev) =>
-                  prev.map((item) =>
-                    item.id === id
-                      ? { ...item, a: item.a + String(delta) }
-                      : item
-                  )
-                );
-              }
-            } catch { /* ignore non-JSON keepalives */ }
+      if (!selectedProfile) {
+        setNotice("Profile context unavailable. Please reselect your Copilot Assistant profile.");
+        setTimeout(() => setNotice(null), 2500);
+        return;
+      }
+      let answerBuffer = "";
+      let answeredAtISO: string | null = null;
+      let storedRecordId: string | null = existingRecordId;
+      try {
+        // Cancel any in-flight request
+        try { currentAnswerAbortRef.current?.abort(); } catch { }
+        const ac = new AbortController();
+        currentAnswerAbortRef.current = ac;
+        setQa((prev) =>
+          prev.map((item) => (item.id === id ? { ...item, answering: true } : item))
+        );
+
+        // Build conversational history from prior QA items (user -> assistant turns)
+        const historyMessages: Array<{ role: 'user' | 'assistant'; content: string }> = [];
+        for (const item of qaRef.current) {
+          if (item.q) historyMessages.push({ role: 'user', content: item.q });
+          if (item.a) historyMessages.push({ role: 'assistant', content: item.a });
+        }
+        // Limit to last ~6 turns to keep prompt short
+        const MAX_TURNS = 4;
+        let trimmedHistory = historyMessages;
+        if (historyMessages.length > MAX_TURNS * 2) {
+          trimmedHistory = historyMessages.slice(historyMessages.length - MAX_TURNS * 2);
+        }
+
+        const baseSystem = 'You are a concise technical interview coach. Keep answers short and contextual.';
+        const instructionsTrimmed = customInstructions.trim();
+        const systemSections: string[] = [baseSystem];
+        if (profilePrompt) {
+          systemSections.push(`Candidate context:\n${profilePrompt}`);
+        }
+        if (instructionsTrimmed) {
+          systemSections.push(`Tone guidance from user: ${instructionsTrimmed}`);
+        }
+        const systemWithContext = systemSections.join('\n\n');
+
+        const res = await fetch('/api/answers/grok', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            question,
+            system: systemWithContext,
+            history: trimmedHistory,
+          }),
+          signal: ac.signal,
+        });
+        if (!res.ok || !res.body) {
+          const raw = await res.text().catch(() => "");
+          setQa((prev) => prev.map((item) => item.id === id ? { ...item, a: raw || `Error ${res.status}`, answering: false } : item));
+          return;
+        }
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
+        let doneStream = false;
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          // SSE frames are separated by double newlines
+          const parts = buffer.split("\n\n");
+          buffer = parts.pop() || "";
+          for (const part of parts) {
+            const lines = part.split("\n");
+            for (const ln of lines) {
+              const line = ln.trim();
+              if (!line || !line.startsWith('data:')) continue;
+              const data = line.slice(5).trim();
+              if (data === '[DONE]') { doneStream = true; break; }
+              try {
+                const json = JSON.parse(data);
+                const delta = json?.choices?.[0]?.delta?.content ?? json?.choices?.[0]?.text ?? '';
+                if (delta) {
+                  answerBuffer += String(delta);
+                  setQa((prev) =>
+                    prev.map((item) =>
+                      item.id === id
+                        ? { ...item, a: item.a + String(delta) }
+                        : item
+                    )
+                  );
+                }
+              } catch { /* ignore non-JSON keepalives */ }
+            }
+            if (doneStream) break;
           }
           if (doneStream) break;
         }
-        if (doneStream) break;
-      }
-      answeredAtISO = new Date().toISOString();
-    } catch (e) {
-      // Suppress error text for aborts; otherwise record error
-      const msg = (e as Error).name === 'AbortError' ? '' : ((e as Error).message || 'Answer error');
-      if (msg) setQa((prev) => prev.map((item) => item.id === id ? { ...item, a: item.a || msg } : item));
-      if (!answerBuffer) {
-        const current = qaRef.current.find((item) => item.id === id);
-        if (current?.a) answerBuffer = current.a;
-      }
-    } finally {
-      const resolvedAnswer = answerBuffer || qaRef.current.find((item) => item.id === id)?.a || "";
-      const resolvedAnsweredAt = answeredAtISO || (resolvedAnswer ? new Date().toISOString() : null);
-      setQa((prev) =>
-        prev.map((item) =>
-          item.id === id
-            ? { ...item, answering: false, answeredAt: resolvedAnsweredAt ?? item.answeredAt ?? null }
-            : item
-        )
-      );
+        answeredAtISO = new Date().toISOString();
+      } catch (e) {
+        // Suppress error text for aborts; otherwise record error
+        const msg = (e as Error).name === 'AbortError' ? '' : ((e as Error).message || 'Answer error');
+        if (msg) setQa((prev) => prev.map((item) => item.id === id ? { ...item, a: item.a || msg } : item));
+        if (!answerBuffer) {
+          const current = qaRef.current.find((item) => item.id === id);
+          if (current?.a) answerBuffer = current.a;
+        }
+      } finally {
+        const resolvedAnswer = answerBuffer || qaRef.current.find((item) => item.id === id)?.a || "";
+        const resolvedAnsweredAt = answeredAtISO || (resolvedAnswer ? new Date().toISOString() : null);
+        setQa((prev) =>
+          prev.map((item) =>
+            item.id === id
+              ? { ...item, answering: false, answeredAt: resolvedAnsweredAt ?? item.answeredAt ?? null }
+              : item
+          )
+        );
 
-      if (resolvedAnswer || storedRecordId) {
-        try {
-          if (storedRecordId) {
-            await updateMeetingTurn(storedRecordId, resolvedAnswer, (resolvedAnsweredAt ?? new Date().toISOString()));
-          } else {
-            const fallbackId = await createMeetingTurn(
-              question,
-              askedAtISO ?? new Date().toISOString(),
-              id,
-              resolvedAnswer,
-              resolvedAnsweredAt ?? new Date().toISOString()
-            );
-            if (fallbackId) {
-              storedRecordId = fallbackId;
-              setQa((prev) =>
-                prev.map((item) => (item.id === id ? { ...item, dbId: fallbackId } : item))
+        if (resolvedAnswer || storedRecordId) {
+          try {
+            if (storedRecordId) {
+              await updateMeetingTurn(storedRecordId, resolvedAnswer, (resolvedAnsweredAt ?? new Date().toISOString()));
+            } else {
+              const fallbackId = await createMeetingTurn(
+                question,
+                askedAtISO ?? new Date().toISOString(),
+                id,
+                resolvedAnswer,
+                resolvedAnsweredAt ?? new Date().toISOString()
               );
+              if (fallbackId) {
+                storedRecordId = fallbackId;
+                setQa((prev) =>
+                  prev.map((item) => (item.id === id ? { ...item, dbId: fallbackId } : item))
+                );
+              }
             }
+          } catch (error) {
+            console.error("Failed to persist meeting transcript", error);
           }
-        } catch (error) {
-          console.error("Failed to persist meeting transcript", error);
         }
       }
-    }
-  }, [createMeetingTurn, customInstructions, profilePrompt, selectedProfile, selectedProfileId, updateMeetingTurn]);
+    }, [createMeetingTurn, customInstructions, profilePrompt, selectedProfile, selectedProfileId, updateMeetingTurn]);
 
   const handleTranscriptSubmit = useCallback(() => {
     const committed = committedTranscriptRef.current.trim();
@@ -668,7 +773,7 @@ export default function MeetingClient() {
     }
     if (!question) return;
     if (!selectedProfileId) {
-      setNotice("Select an interview copilot profile before submitting.");
+      setNotice("Select a Copilot Assistant profile before submitting.");
       setTimeout(() => setNotice(null), 2500);
       return;
     }
@@ -784,7 +889,7 @@ export default function MeetingClient() {
         return;
       }
       // Ensure audio track is enabled
-      audioTracks.forEach(t => { try { t.enabled = true; } catch {} });
+      audioTracks.forEach(t => { try { t.enabled = true; } catch { } });
       const token = await getToken();
 
       // Prefer ultra-low-latency PCM streaming when available (not Safari)
@@ -794,7 +899,7 @@ export default function MeetingClient() {
       if (preferPcm) {
         const ac = new AudioContext();
         audioCtxRef.current = ac;
-        await ac.resume().catch(() => {});
+        await ac.resume().catch(() => { });
         sampleRate = ac.sampleRate || 48000;
         url += `&encoding=linear16&sample_rate=${encodeURIComponent(String(sampleRate))}`;
       } else {
@@ -843,8 +948,8 @@ export default function MeetingClient() {
           recRef.current = rec;
           rec.ondataavailable = (e) => { if (e.data && e.data.size > 0 && ws.readyState === WebSocket.OPEN) ws.send(e.data); };
           rec.onstop = () => {
-            try { if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'CloseStream' })); } catch {}
-            try { ws.close(); } catch {}
+            try { if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'CloseStream' })); } catch { }
+            try { ws.close(); } catch { }
           };
           // Smaller timeslice reduces TTFP and partial latency
           rec.start(60);
@@ -890,10 +995,10 @@ export default function MeetingClient() {
           partialRef.current = "";
         }
         // Cleanup PCM path
-        try { procRef.current?.disconnect(); } catch {}
-        try { sourceRef.current?.disconnect(); } catch {}
+        try { procRef.current?.disconnect(); } catch { }
+        try { sourceRef.current?.disconnect(); } catch { }
         procRef.current = null; sourceRef.current = null;
-        try { audioCtxRef.current?.close(); } catch {}
+        try { audioCtxRef.current?.close(); } catch { }
         audioCtxRef.current = null;
       };
     } catch (e) {
@@ -903,17 +1008,17 @@ export default function MeetingClient() {
 
   const stopTranscribe = useCallback(() => {
     try { recRef.current?.stop(); } catch { }
-    try { procRef.current?.disconnect(); } catch {}
-    try { sourceRef.current?.disconnect(); } catch {}
+    try { procRef.current?.disconnect(); } catch { }
+    try { sourceRef.current?.disconnect(); } catch { }
     procRef.current = null; sourceRef.current = null;
-    try { audioCtxRef.current?.close(); } catch {}
+    try { audioCtxRef.current?.close(); } catch { }
     audioCtxRef.current = null;
     try {
       if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
         wsRef.current.send(JSON.stringify({ type: 'CloseStream' }));
       }
-    } catch {}
-    try { wsRef.current?.close(); } catch {}
+    } catch { }
+    try { wsRef.current?.close(); } catch { }
     wsRef.current = null; recRef.current = null;
     setLivePartial("");
     partialRef.current = "";
@@ -921,8 +1026,16 @@ export default function MeetingClient() {
 
   async function startCapture() {
     try {
+      const latestMinutes = await refreshCredits();
+      const minutesToCheck = latestMinutes ?? availableMinutes;
+      if (minutesToCheck <= 0) {
+        setStatus("Idle");
+        setNotice("You are out of credits. Add more to continue.");
+        setTimeout(() => setNotice(null), 2500);
+        return;
+      }
       if (!selectedProfileId) {
-        setNotice("Pick an interview copilot profile before starting capture.");
+        setNotice("Pick a Copilot Assistant profile before starting capture.");
         setTimeout(() => setNotice(null), 2500);
         return;
       }
@@ -951,6 +1064,7 @@ export default function MeetingClient() {
         await video.play().catch(() => { });
       }
       setCapturing(true);
+      startCreditTicker();
       // Quick check for an audio track; if missing, guide the user
       const hasAudio = !!stream.getAudioTracks().length;
       setStatus(hasAudio ? "Capturing — starting live transcription…" : "Capturing — no audio detected (pick a TAB and enable Share tab audio)");
@@ -971,7 +1085,7 @@ export default function MeetingClient() {
     }
   }
 
-  const stopCapture = useCallback(() => {
+  const stopCapture = useCallback((statusMessage?: string) => {
     try {
       try { stopTranscribe(); } catch { }
       const s = streamRef.current;
@@ -985,9 +1099,43 @@ export default function MeetingClient() {
       }
     } finally {
       setCapturing(false);
-      setStatus("Idle");
+      setStatus(statusMessage ?? "Idle");
+      void settleCredits();
     }
-  }, [stopTranscribe]);
+  }, [settleCredits, stopTranscribe]);
+
+  useEffect(() => {
+    if (!capturing) return;
+    let cancelled = false;
+    const interval = window.setInterval(async () => {
+      const minutes = await refreshCredits();
+      if (cancelled) return;
+      if (!captureStartedAtRef.current) return;
+      if (minutes !== null) {
+        const remaining = minutes - liveElapsedSecondsRef.current / 60;
+        if (remaining <= 0) {
+          setNotice("Your credits are finished. Meeting recording has stopped.");
+          setTimeout(() => setNotice(null), 3000);
+          stopCapture("Credits exhausted — captions stopped.");
+        }
+      }
+    }, 30000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, [capturing, refreshCredits, setNotice, stopCapture]);
+
+  useEffect(() => {
+    if (!capturing) return;
+    if (!captureStartedAtRef.current) return;
+    const remaining = availableMinutes - liveElapsedSeconds / 60;
+    if (remaining <= 0) {
+      setNotice("Your credits are finished. Meeting recording has stopped.");
+      setTimeout(() => setNotice(null), 3000);
+      stopCapture("Credits exhausted — captions stopped.");
+    }
+  }, [availableMinutes, capturing, liveElapsedSeconds, setNotice, stopCapture]);
 
   useEffect(() => {
     const previous = previousProfileIdRef.current;
@@ -1004,27 +1152,134 @@ export default function MeetingClient() {
     };
   }, [stopCapture, stopTranscribe]);
 
+  const remainingMinutesDisplay = Math.max(0, availableMinutes - liveElapsedSeconds / 60);
+  const formattedRemainingMinutes = remainingMinutesDisplay.toFixed(2);
+  const sessionMinutes = Math.floor(liveElapsedSeconds / 60);
+  const sessionSeconds = liveElapsedSeconds % 60;
+  const sessionElapsedLabel = `${sessionMinutes.toString().padStart(2, "0")}:${sessionSeconds
+    .toString()
+    .padStart(2, "0")}`;
+
   return (
     <div className="flex h-full min-h-0 flex-col gap-4 overflow-hidden">
       <div className="flex flex-col gap-3" data-animate="fade-up">
-        <div className="flex flex-wrap items-start justify-between gap-4">
+        <div className="flex flex-wrap items-start justify-between gap-4 ">
           <div className="space-y-3">
             <div className="space-y-1">
-              <h1 className="text-2xl font-semibold tracking-tight uppercase">Meeting</h1>
+              <h1 className="text-2xl font-semibold tracking-tight uppercase">Interview Copilot</h1>
             </div>
-            <div className="flex flex-wrap  items-baseline-last gap-3">
+
+          </div>
+          <div className="flex items-center gap-2">
+            {!capturing ? (
+              <Button
+                type="button"
+                onClick={startCapture}
+                disabled={!selectedProfileId || profileDetailLoading || !!profileDetailError || remainingMinutesDisplay <= 0}
+              >
+                Start captions
+              </Button>
+            ) : (
+              <Button type="button" variant="destructive" onClick={() => stopCapture()}>
+                Stop
+              </Button>
+            )}
+            <span className="text-xs text-muted-foreground">{status}</span>
+          </div>
+        </div>
+        <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
+          <span className="font-semibold text-foreground">Credits remaining:</span>
+          <span>{formattedRemainingMinutes} minutes</span> -
+          <span className="rounded-full border border-white/15 bg-white/5 px-2 py-0.5 text-[0.7rem] text-white/70">
+            Session {sessionElapsedLabel}
+          </span>
+        </div>
+      </div>
+      {notice && (
+        <div className="text-xs rounded-md border px-3 py-2 border-amber-400/40 bg-amber-500/10 text-amber-700" data-animate="fade-up">
+          {notice}
+        </div>
+      )}
+
+      <div
+        className="grid flex-1 min-h-0 gap-4 items-stretch"
+        data-animate="fade-up"
+        style={{ gridTemplateColumns: "minmax(0,27%) minmax(0,46%) minmax(0,27%)" }}
+      >
+        <section className="flex min-h-0 flex-col rounded-xl border shadow-sm border-white/15 bg-white/10 text-white/80 backdrop-blur p-3">
+          <div className="text-sm font-medium mb-2 shrink-0">Interview Copilot Feed</div>
+          <div className="relative w-full overflow-hidden rounded-lg bg-black/80">
+            <video ref={videoRef} className="aspect-video h-full w-full object-contain" playsInline muted controls />
+          </div>
+          <div className="mt-4 flex min-h-0 flex-1 flex-col">
+            <div className="text-sm font-medium mb-2 shrink-0">Live Captions</div>
+            <textarea
+              ref={transcriptRef}
+              value={transcriptInput}
+              onChange={handleTranscriptChange}
+              onKeyDown={handleTranscriptKeyDown}
+              onFocus={handleTranscriptFocus}
+              onBlur={handleTranscriptBlur}
+              disabled={!selectedProfileId || profileDetailLoading || !!profileDetailError}
+              className="flex-1 min-h-0 w-full text-black resize-none overflow-auto rounded-md bg-background p-2 text-xs leading-6 outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              placeholder="Live transcript will appear here. Type or edit text, then press Enter to send."
+            />
+            <p className="mt-1 text-[0.65rem] text-muted-foreground">
+              Press Enter to send to Grok. Use Shift+Enter for a new line.
+            </p>
+            {livePartial && !isUserEditing && (
+              <p className="mt-1 truncate rounded bg-muted/40 px-2 py-1 text-[0.65rem] text-muted-foreground">
+                Listening… {livePartial}
+              </p>
+            )}
+          </div>
+        </section>
+
+        <section className="flex min-h-0 flex-col rounded-xl border shadow-sm border-white/15 bg-white/10 text-white/80 backdrop-blur p-3">
+          <div className="text-sm font-medium mb-2 shrink-0">Your Answers</div>
+          <div ref={answersBoxRef} className="flex-1 min-h-0 w-full overflow-auto rounded-md bg-background p-2 text-xs leading-6 whitespace-pre-wrap">
+            {!selectedQa && (
+              <div className="opacity-60">
+                {!selectedProfileId
+                  ? "Select a Copilot Assistant profile to begin."
+                  : profileDetailLoading
+                    ? "Loading profile context…"
+                    : qa.length
+                      ? "Pick a question from the history to review its answer."
+                      : "Answers will appear here…"}
+              </div>
+            )}
+            {selectedQa && (
+              <div className="space-y-2" key={selectedQa.id}>
+                <div className="font-medium text-muted-foreground">Q: {selectedQa.q}</div>
+                <div className="rounded-xl border shadow-sm border-white/15 bg-white/10 text-white/80 backdrop-blur p-3">
+                  {selectedQa.a ? (
+                    renderAnswerContent(selectedQa.a)
+                  ) : (
+                    <div className="italic text-muted-foreground">Waiting for response…</div>
+                  )}
+                  {selectedQa.answering ? <span className="ml-1 inline-block animate-pulse text-muted-foreground">▌</span> : null}
+                </div>
+              </div>
+            )}
+          </div>
+        </section>
+
+        <section className="min-h-0 flex-col flex gap-4">
+          <div className="rounded-xl border shadow-sm border-white/15 bg-white/10 text-white/80 backdrop-blur p-3 h-max">
+            <div className="flex flex-wrap items-baseline-last gap-3">
               <div className="flex flex-col gap-1 min-w-[220px]">
                 <span className="text-[0.7rem] font-semibold uppercase tracking-tight text-muted-foreground">
-                  Copilot profile
+                  Copilot Assistant profile
                 </span>
                 <select
                   value={selectedProfileId}
                   onChange={(event) => setSelectedProfileId(event.target.value)}
                   disabled={profilesLoading || !!profilesError}
-                  className="h-9 min-w-[220px] rounded-md border border-border bg-background px-3 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  className="h-9 min-w-[220px] rounded-md border border-border bg-background px-3 text-xs"
                 >
                   <option value="">
-                    {profilesLoading ? "Loading profiles…" : "Select a copilot profile"}
+                    {profilesLoading ? "Loading profiles…" : "Select a Copilot Assistant profile"}
                   </option>
                   {profiles.map((profile) => (
                     <option key={profile.id} value={profile.id}>
@@ -1062,197 +1317,96 @@ export default function MeetingClient() {
               </div>
             </div>
 
-            <div className="space-y-1 text-xs text-muted-foreground">
-              {!profilesLoading && !profilesError && profiles.length === 0 && (
+            <div className="mt-3 space-y-1 text-xs text-muted-foreground">
+              {selectedProfile && !profileDetailError ? (
                 <p>
-                  No profiles yet. Create one in the Interview Copilot workspace to start a tailored session.
+                  Using <span className="font-semibold text-foreground">{selectedProfile.profileName}</span> for a mock interview targeting{' '}
+                  <span className="font-semibold text-foreground">{selectedProfile.jobRole}</span>.
                 </p>
-              )}
-              {!profilesError && !profilesLoading && profiles.length > 0 && !selectedProfileId && (
+              ) : (
                 <p>Select a profile to unlock live captions and AI answers.</p>
               )}
-              {profilesError && (
-                <p className="text-destructive">{profilesError}</p>
-              )}
-              {profileDetailLoading && selectedProfileId && !profileDetailError && (
-                <p>Loading profile context…</p>
-              )}
-              {selectedProfileId && profileDetailError && (
-                <p className="text-destructive">{profileDetailError}</p>
-              )}
-              {selectedProfile && !profileDetailError && (
-                <p>
-                  Using <span className="font-semibold text-foreground">{selectedProfile.profileName}</span> for a mock interview targeting <span className="font-semibold text-foreground">{selectedProfile.jobRole}</span>.
-                </p>
-              )}
-              {customInstructions && (
-                <p>Current tone guidance: {customInstructions}</p>
-              )}
+              {customInstructions ? <p>Current tone guidance: {customInstructions}</p> : null}
             </div>
           </div>
-          <div className="flex items-center gap-2">
-            {!capturing ? (
-              <Button
-                type="button"
-                onClick={startCapture}
-                disabled={!selectedProfileId || profileDetailLoading || !!profileDetailError}
-              >
-                Start captions
-              </Button>
-            ) : (
-              <Button type="button" variant="destructive" onClick={stopCapture}>Stop</Button>
-            )}
-            <span className="text-xs text-muted-foreground">{status}</span>
-          </div>
-        </div>
-      </div>
 
-      {notice && (
-        <div className="text-xs rounded-md border px-3 py-2 border-amber-400/40 bg-amber-500/10 text-amber-700" data-animate="fade-up">
-          {notice}
-        </div>
-      )}
-
-      <div
-        className="grid flex-1 min-h-0 gap-4 items-stretch"
-        data-animate="fade-up"
-        style={{ gridTemplateColumns: "minmax(0,27%) minmax(0,46%) minmax(0,27%)" }}
-      >
-        <section className="flex min-h-0 flex-col rounded-xl border bg-background/60 p-3">
-          <div className="text-sm font-medium mb-2 shrink-0">Meeting Feed</div>
-          <div className="relative w-full overflow-hidden rounded-lg bg-black/80">
-            <video ref={videoRef} className="aspect-video h-full w-full object-contain" playsInline muted controls />
-          </div>
-          <div className="mt-4 flex min-h-0 flex-1 flex-col">
-            <div className="text-sm font-medium mb-2 shrink-0">Live Captions</div>
-            <textarea
-              ref={transcriptRef}
-              value={transcriptInput}
-              onChange={handleTranscriptChange}
-              onKeyDown={handleTranscriptKeyDown}
-              onFocus={handleTranscriptFocus}
-              onBlur={handleTranscriptBlur}
-              disabled={!selectedProfileId || profileDetailLoading || !!profileDetailError}
-              className="flex-1 min-h-0 w-full resize-none overflow-auto rounded-md bg-background p-2 text-xs leading-6 outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              placeholder="Live transcript will appear here. Type or edit text, then press Enter to send."
-            />
-            <p className="mt-1 text-[0.65rem] text-muted-foreground">
-              Press Enter to send to Grok. Use Shift+Enter for a new line.
-            </p>
-            {livePartial && !isUserEditing && (
-              <p className="mt-1 truncate rounded bg-muted/40 px-2 py-1 text-[0.65rem] text-muted-foreground">
-                Listening… {livePartial}
-              </p>
-            )}
-          </div>
-        </section>
-
-        <section className="flex min-h-0 flex-col rounded-xl border bg-background/60 p-3">
-          <div className="text-sm font-medium mb-2 shrink-0">Your Answers</div>
-          <div ref={answersBoxRef} className="flex-1 min-h-0 w-full overflow-auto rounded-md bg-background p-2 text-xs leading-6 whitespace-pre-wrap">
-            {!selectedQa && (
-              <div className="opacity-60">
-                {!selectedProfileId
-                  ? "Select a copilot profile to begin."
-                  : profileDetailLoading
-                    ? "Loading profile context…"
-                    : qa.length
-                      ? "Pick a question from the history to review its answer."
-                      : "Answers will appear here…"}
-              </div>
-            )}
-            {selectedQa && (
-              <div className="space-y-2" key={selectedQa.id}>
-                <div className="font-medium text-muted-foreground">Q: {selectedQa.q}</div>
-                <div className="rounded-lg border bg-background/60 p-3 text-foreground">
-                  {selectedQa.a ? (
-                    renderAnswerContent(selectedQa.a)
-                  ) : (
-                    <div className="italic text-muted-foreground">Waiting for response…</div>
-                  )}
-                  {selectedQa.answering ? <span className="ml-1 inline-block animate-pulse text-muted-foreground">▌</span> : null}
-                </div>
-              </div>
-            )}
-          </div>
-        </section>
-
-        <section className="flex min-h-0 flex-col rounded-xl border bg-background/60 p-3">
-          <div className="text-sm font-medium mb-2 shrink-0">Q/A History</div>
-          <div className="flex-1 min-h-0 overflow-y-auto">
-            {historyItems.length === 0 ? (
-              <div className="rounded-md border border-dashed bg-background/60 p-3 text-muted-foreground">History will appear here…</div>
-            ) : (
-              (() => {
-                const elements: ReactNode[] = [];
-                let lastGroupKey: string | null = null;
-                historyItems.forEach((item) => {
-                  const askedDate = item.askedAt ? new Date(item.askedAt) : null;
-                  const groupKey = getGroupKey(askedDate);
-                  if (groupKey !== lastGroupKey) {
-                    elements.push(
-                      <div
-                        key={`divider-${groupKey}-${item.id}`}
-                        className="flex items-center gap-2 text-[0.6rem] uppercase tracking-wide text-muted-foreground/70"
-                      >
-                        <span className="h-px flex-1 bg-border" />
-                        <time className="whitespace-nowrap">
-                          {askedDate && !Number.isNaN(askedDate.getTime())
-                            ? GROUP_LABEL_FORMATTER.format(askedDate)
-                            : "Recent"}
-                        </time>
-                        <span className="h-px flex-1 bg-border" />
-                      </div>
-                    );
-                    lastGroupKey = groupKey;
-                  }
-
-                  const trimmed = item.a?.trim() ?? "";
-                  const firstLine = trimmed.split(/\n+/)[0] ?? "";
-                  const showEllipsis = trimmed.length > firstLine.length;
-                  const isSelected = selectedQaId === item.id;
-                  const askedAtLabel = askedDate && !Number.isNaN(askedDate.getTime())
-                    ? GROUP_LABEL_FORMATTER.format(askedDate)
-                    : null;
-
-                  elements.push(
-                    <button
-                      key={item.id}
-                      type="button"
-                      onClick={() => setSelectedQaId(item.id)}
-                      className={clsx(
-                        "w-full rounded-md border bg-background/60 p-2 text-left text-xs transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                        isSelected
-                          ? "border-primary/70 bg-primary/10 text-foreground"
-                          : "border-border hover:border-primary/40"
-                      )}
-                    >
-                      <div className="flex items-start justify-between gap-2">
-                        <span className="font-medium text-foreground line-clamp-2">{item.q}</span>
-                        {askedAtLabel && (
-                          <time className="shrink-0 text-[0.6rem] uppercase text-muted-foreground/70">
-                            {askedAtLabel}
+          <div className="flex-1 min-h-0 rounded-xl border shadow-sm border-white/15 bg-white/10 text-white/80 backdrop-blur p-3 flex flex-col">
+            <div className="text-sm font-medium mb-2 shrink-0">Q/A History</div>
+            <div className="flex-1 min-h-0 overflow-y-auto pr-1">
+              {historyItems.length === 0 ? (
+                <div className="rounded-md border border-dashed bg-background/60 p-3 text-muted-foreground">History will appear here…</div>
+              ) : (
+                (() => {
+                  const elements: ReactNode[] = [];
+                  let lastGroupKey: string | null = null;
+                  historyItems.forEach((item) => {
+                    const askedDate = item.askedAt ? new Date(item.askedAt) : null;
+                    const groupKey = getGroupKey(askedDate);
+                    if (groupKey !== lastGroupKey) {
+                      elements.push(
+                        <div
+                          key={`divider-${groupKey}-${item.id}`}
+                          className="flex items-center gap-2 text-[0.6rem] uppercase tracking-wide text-muted-foreground/70"
+                        >
+                          <span className="h-px flex-1 bg-border" />
+                          <time className="whitespace-nowrap">
+                            {askedDate && !Number.isNaN(askedDate.getTime())
+                              ? GROUP_LABEL_FORMATTER.format(askedDate)
+                              : "Recent"}
                           </time>
+                          <span className="h-px flex-1 bg-border" />
+                        </div>
+                      );
+                      lastGroupKey = groupKey;
+                    }
+
+                    const trimmed = item.a?.trim() ?? "";
+                    const firstLine = trimmed.split(/\n+/)[0] ?? "";
+                    const showEllipsis = trimmed.length > firstLine.length;
+                    const isSelected = selectedQaId === item.id;
+                    const askedAtLabel = askedDate && !Number.isNaN(askedDate.getTime())
+                      ? GROUP_LABEL_FORMATTER.format(askedDate)
+                      : null;
+
+                    elements.push(
+                      <button
+                        key={item.id}
+                        type="button"
+                        onClick={() => setSelectedQaId(item.id)}
+                        className={clsx(
+                          "w-full rounded-md border bg-background/60 p-2 text-left text-xs transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                          isSelected
+                            ? "border-primary/70 bg-primary/10 text-foreground"
+                            : "border-border hover:border-primary/40"
                         )}
-                      </div>
-                      <div className="mt-1 text-muted-foreground/80">
-                        {trimmed ? (
-                          <span className="block line-clamp-2">
-                            {firstLine}
-                            {showEllipsis ? " …" : ""}
-                          </span>
-                        ) : item.answering ? (
-                          <span className="italic text-muted-foreground">Answer in progress…</span>
-                        ) : (
-                          <span className="italic text-muted-foreground">Awaiting answer.</span>
-                        )}
-                      </div>
-                    </button>
-                  );
-                });
-                return <div className="flex flex-col gap-3">{elements}</div>;
-              })()
-            )}
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <span className="font-medium text-foreground line-clamp-2">{item.q}</span>
+                          {askedAtLabel && (
+                            <time className="shrink-0 text-[0.6rem] uppercase text-muted-foreground/70">
+                              {askedAtLabel}
+                            </time>
+                          )}
+                        </div>
+                        <div className="mt-1 text-muted-foreground/80">
+                          {trimmed ? (
+                            <span className="block line-clamp-2">
+                              {firstLine}
+                              {showEllipsis ? " …" : ""}
+                            </span>
+                          ) : item.answering ? (
+                            <span className="italic text-muted-foreground">Answer in progress…</span>
+                          ) : (
+                            <span className="italic text-muted-foreground">Awaiting answer.</span>
+                          )}
+                        </div>
+                      </button>
+                    );
+                  });
+                  return <div className="flex flex-col gap-3">{elements}</div>;
+                })()
+              )}
+            </div>
           </div>
         </section>
       </div>

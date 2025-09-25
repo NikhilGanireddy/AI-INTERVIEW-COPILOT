@@ -35,16 +35,26 @@ const buttonVariants = cva(
   }
 )
 
+type ClerkButtonBridgingProps = {
+  afterSignUpUrl?: string
+  afterSignInUrl?: string
+}
+
+export type ButtonProps = React.ComponentProps<"button"> &
+  VariantProps<typeof buttonVariants> & {
+    asChild?: boolean
+  } &
+  ClerkButtonBridgingProps
+
 function Button({
   className,
   variant,
   size,
   asChild = false,
+  afterSignUpUrl: _afterSignUpUrl,
+  afterSignInUrl: _afterSignInUrl,
   ...props
-}: React.ComponentProps<"button"> &
-  VariantProps<typeof buttonVariants> & {
-    asChild?: boolean
-  }) {
+}: ButtonProps) {
   const Comp = asChild ? Slot : "button"
 
   return (

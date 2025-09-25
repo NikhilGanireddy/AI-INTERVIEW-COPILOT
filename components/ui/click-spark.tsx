@@ -40,7 +40,7 @@ function ClickSpark({
 
     const getParent = (): HTMLElement | null => canvas.parentElement as HTMLElement | null;
 
-    function resizeCanvas() {
+    const resizeCanvas = () => {
       const parent = getParent();
       if (!parent) return;
       const { width, height } = parent.getBoundingClientRect();
@@ -49,22 +49,28 @@ function ClickSpark({
       const targetW = Math.floor(width * dpr);
       const targetH = Math.floor(height * dpr);
 
-      if (canvas) {
-        if (canvas.width !== targetW) canvas.width = targetW;
-        if (canvas.height !== targetH) canvas.height = targetH;
+      if (canvas.width !== targetW) canvas.width = targetW;
+      if (canvas.height !== targetH) canvas.height = targetH;
 
-        // Keep CSS size in CSS pixels
-        canvas.style.width = `${Math.floor(width)}px`;
-        canvas.style.height = `${Math.floor(height)}px`;
-      }
-    }
+      // Keep CSS size in CSS pixels
+      canvas.style.width = `${Math.floor(width)}px`;
+      canvas.style.height = `${Math.floor(height)}px`;
+    };
 
     const parentForObserver = getParent();
     if (!parentForObserver) return;
 
+    resizeCanvas();
+
+    if (typeof ResizeObserver === "undefined") {
+      window.addEventListener("resize", resizeCanvas, { passive: true });
+      return () => {
+        window.removeEventListener("resize", resizeCanvas);
+      };
+    }
+
     const observer = new ResizeObserver(resizeCanvas);
     observer.observe(parentForObserver);
-    resizeCanvas();
 
     return () => {
       observer.disconnect();
@@ -160,7 +166,7 @@ function ClickSpark({
       style={{
         position: "relative",
         width: "100%",
-        height: "100%",
+        minHeight: "100%",
       }}
     >
       <canvas

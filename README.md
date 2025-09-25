@@ -1,7 +1,16 @@
-# Interview Trainer
+# Nika AI
 > Real-time AI copilot that listens, coaches, and speaks back during your mock interviews.
 
-Interview Trainer bundles live transcription, Grok-powered coaching, and custom voice synthesis into a single Next.js workspace. Capture a meeting tab, stream captions through Deepgram, let Grok craft tailored coaching, and answer in your cloned ElevenLabs voice – all while Clerk keeps the experience gated to signed-in users.
+Nika AI bundles live transcription, Grok-powered coaching, and custom voice synthesis into a single Next.js workspace. Capture a meeting tab, stream captions through Deepgram, let Grok craft tailored coaching, and answer in your cloned ElevenLabs voice – all while Clerk keeps the experience gated to signed-in users.
+
+---
+
+## How to Run
+1. Install dependencies: `npm install`
+2. Create `.env.local` and set `NEXT_PUBLIC_PRACTICE_ONLY=true` for practice mode (omit or set false for live mode).
+3. Start the dev server: `npm run dev`
+4. Execute unit tests: `npm run test`
+5. Build the optional Chrome extension bundle: `npm run build:ext` (outputs to `extension/dist/`)
 
 ---
 
@@ -9,7 +18,6 @@ Interview Trainer bundles live transcription, Grok-powered coaching, and custom 
 - **Interview Copilot workspace** – build reusable candidate profiles (resume, job brief, project notes) with a guided Stepper UI (`app/(directory)/copilot/CopilotForm.tsx`) and manage them inline.
 - **Meeting command center** – capture a browser tab, stream live captions, fire questions to Grok, and archive Q/A history without leaving the page (`app/(directory)/meeting/meeting-client.tsx`).
 - **Voice lab** – clone voices, edit their labels, and try instant TTS playback with streaming ElevenLabs audio (`app/(directory)/voice/clone`, `/voice/tts`).
-- **Speech-to-text studio** – experiment with Deepgram’s SDK across microphone, shared tab, or remote stream modes in a single panel (`app/(directory)/voice/stt/stt-client.tsx`).
 - **Live captions on demand** – spin up a lightweight captioner for a Meet or Zoom tab in seconds (`app/live-captions/LiveCaptions.tsx`).
 
 ---
@@ -54,7 +62,7 @@ Interview Trainer bundles live transcription, Grok-powered coaching, and custom 
 ```
 app/                    # Routes + API endpoints
   (authorization)/      # Clerk sign-in/sign-up flows
-  (directory)/          # Auth-protected workspaces (copilot, meeting, voice)
+  (directory)/          # Auth-protected workspaces (copilot, coding-copilot, meeting, voice)
   live-captions/        # Lightweight caption tool
 components/             # UI primitives + feature components (Stepper, Recorder)
 lib/                    # DB connector and Mongoose models
@@ -147,9 +155,8 @@ XAI_API_KEY=xaI_...
 
 ## Development Notes
 - **Auth-first**: `middleware.ts` wraps every route with Clerk; local dev needs valid Clerk keys.
-- **Streaming everywhere**: Meeting and STT features rely on long-lived WebSockets and SSE. Keep dev tools open to inspect event frames.
+- **Streaming everywhere**: Meeting and caption features rely on long-lived WebSockets and SSE. Keep dev tools open to inspect event frames.
 - **Voice uploads**: `app/(directory)/voice/clone/CloneVoiceForm.tsx` accepts WEBM/MP3/WAV and shows inline success/error states. Files post directly to `/api/voice/clone`.
-- **Deepgram modes**: `app/(directory)/voice/stt/stt-client.tsx` demonstrates three modes (mic, screen, remote URL) plus PCM fallbacks for Safari.
 - **History sync**: Meeting answers persist through `/api/meeting/history` so refreshing the page restores prior turns for the selected profile.
 - **Edge vs Node**: High-throughput TTS streaming lives on the Edge runtime; cloning and DB-backed routes stay on Node to access Mongoose.
 

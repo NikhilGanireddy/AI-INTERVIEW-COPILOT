@@ -216,7 +216,7 @@ export async function POST(req: NextRequest) {
       profile: sanitizeProfile(doc.toObject() as unknown as RawProfile),
     });
   } catch (error) {
-    console.error("Create copilot profile failed", error);
+    console.error("Create Copilot Assistant profile failed", error);
     return NextResponse.json(
       { error: "Unable to save profile", details: (error as Error).message },
       { status: 500 }
@@ -262,7 +262,7 @@ export async function PATCH(req: NextRequest) {
 
     return NextResponse.json({ ok: true, profile: sanitizeProfile(updated as unknown as RawProfile) });
   } catch (error) {
-    console.error("Rename copilot profile failed", error);
+    console.error("Rename Copilot Assistant profile failed", error);
     return NextResponse.json(
       { error: "Unable to update profile", details: (error as Error).message },
       { status: 500 }
@@ -298,7 +298,7 @@ export async function DELETE(req: NextRequest) {
     }
     return NextResponse.json({ ok: true });
   } catch (error) {
-    console.error("Delete copilot profile failed", error);
+    console.error("Delete Copilot Assistant profile failed", error);
     return NextResponse.json(
       { error: "Unable to delete profile", details: (error as Error).message },
       { status: 500 }
