@@ -26,8 +26,8 @@ export default function GlassSurface({
   const surfaceStyle = {
     "--glass-blur": `${blur}px`,
     "--glass-rgb": tintRGB,
-    "--glass-alpha": alpha,
-  } satisfies React.CSSProperties;
+    "--glass-alpha": `${alpha}`,
+  } as React.CSSProperties & Record<string, string>;
 
   React.useEffect(() => {
     if (!interactive || !ref.current) return;
