@@ -23,6 +23,11 @@ export default function GlassSurface({
   className,
 }: Props) {
   const ref = React.useRef<HTMLDivElement>(null);
+  const surfaceStyle = {
+    "--glass-blur": `${blur}px`,
+    "--glass-rgb": tintRGB,
+    "--glass-alpha": alpha,
+  } satisfies React.CSSProperties;
 
   React.useEffect(() => {
     if (!interactive || !ref.current) return;
@@ -44,15 +49,7 @@ export default function GlassSurface({
       className={["pointer-events-none fixed inset-0 -z-10", className]
         .filter(Boolean)
         .join(" ")}
-      style={
-        {
-          // glass tokens
-          // @ts-ignore CSS var values
-          "--glass-blur": `${blur}px`,
-          "--glass-rgb": tintRGB,
-          "--glass-alpha": alpha,
-        } as React.CSSProperties
-      }
+      style={surfaceStyle}
     >
       {/* rich background to blur */}
       <div className="absolute inset-0">

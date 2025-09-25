@@ -51,17 +51,18 @@ function Button({
   variant,
   size,
   asChild = false,
-  afterSignUpUrl: _afterSignUpUrl,
-  afterSignInUrl: _afterSignInUrl,
   ...props
 }: ButtonProps) {
   const Comp = asChild ? Slot : "button"
+  const { afterSignUpUrl: _ignoreAfterSignUpUrl, afterSignInUrl: _ignoreAfterSignInUrl, ...restProps } = props
+  void _ignoreAfterSignUpUrl
+  void _ignoreAfterSignInUrl
 
   return (
     <Comp
       data-slot="button"
       className={cn(buttonVariants({ variant, size, className }))}
-      {...props}
+      {...restProps}
     />
   )
 }
